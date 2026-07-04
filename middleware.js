@@ -3,31 +3,33 @@ const User = require('./userModel');
 
 // 1. Force Join Check Middleware
 const forceJoinMiddleware = async (ctx, next) => {
-    // अगर मैसेज चैनल से है या कोई इनलाइन क्वेरी है, तो इग्नोर करें
-    if (!ctx.from || ctx.chat.type === 'channel') return next();
+    // अगर मैसेज चैनल से है तो इग्नोर करें
+    if (ctx.chat && ctx.chat.type === 'channel') {
+        return next();
+    }
+
+    // अगर ctx.from नहीं है, तो भी आगे बढ़ें (जैसे इनलाइन क्वेरी)
+    if (!ctx.from) {
+        return next();
+    }
 
     const userId = ctx.from.id;
 
-    // एडमिन के लिए फ़ोर्स जॉइन बाईपास (Admin को चेक करने की ज़रूरत नहीं)
-    if (userId === config.adminId) {
+    // एडमिन के लिए फ़ोर्स जॉइन बाईपास
+    if (userId === Number(config.adminId)) {
         return next();
     }
 
     try {
-        // Telegram API से यूजर का चैनल स्टेटस चेक करना
         const member = await ctx.telegram.getChatMember(config.forceJoinChannel, userId);
-        
         const allowedStatuses = ['creator', 'administrator', 'member'];
         
         if (allowedStatuses.includes(member.status)) {
-            // अगर यूजर ने जॉइन किया हुआ है, तो आगे बढ़ने दें
             return next();
         } else {
-            // अगर जॉइन नहीं किया है, तो फ़ोर्स जॉイン का मैसेज और बटन्स दिखाएं
             return sendForceJoinMessage(ctx);
         }
     } catch (error) {
-        // अगर बोट चैनल में एडमिन नहीं है या कोई और एरर आता है
         console.error(`❌ Force Join Error: ${error.message}`);
         return sendForceJoinMessage(ctx);
     }
@@ -61,7 +63,7 @@ const mainMenuKeyboard = {
             [{ text: '📁 My Files' }, { text: '📊 Statistics' }],
             [{ text: 'ℹ Help' }]
         ],
-        resize_keyboard: true, // कीबोर्ड का साइज स्क्रीन के हिसाब से ऑटो-एडजस्ट करने के लिए
+        resize_keyboard: true,
         one_time_keyboard: false
     }
 };
