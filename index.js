@@ -12,11 +12,16 @@ const bot = new Telegraf(config.botToken);
 // 2. Connect MongoDB Database
 connectDB();
 
-// 3. Setup Middlewares & Sessions
+// 3. Setup Sessions
 bot.use(session()); // सीन्स और स्टेट्स मैनेज करने के लिए
-bot.use(forceJoinMiddleware); // हर मैसेज पर फ़ोर्स जॉइन चेक करने के लिए
 
-// 4. Register Users on /start Command
+// 🔥 CRITICAL FIX: एडमिन फीचर्स को सबसे पहले रजिस्टर करें ताकि वे फ़ोर्स जॉइन या सामान्य यूज़र स्टार्ट से बाईपास न हों
+setupAdminFeatures(bot);
+
+// 4. Setup Force Join Middleware (अब यह केवल सामान्य यूज़र्स पर लागू होगा)
+bot.use(forceJoinMiddleware); 
+
+// 5. Register Users on /start Command
 bot.start(async (ctx) => {
     if (!ctx.from) return;
 
@@ -50,7 +55,7 @@ bot.start(async (ctx) => {
     }
 });
 
-// 5. Handle Force Join Verification Callback Button
+// 6. Handle Force Join Verification Callback Button
 bot.action('verify_join', async (ctx) => {
     if (!ctx.from) return;
     
@@ -79,11 +84,10 @@ bot.action('verify_join', async (ctx) => {
     }
 });
 
-// 6. Bind Admin & User Core Modules
-setupAdminFeatures(bot);
+// 7. Bind User Core Modules
 setupUserFeatures(bot);
 
-// 7. Production-Ready Global Error Handling (Prevents Bot Crashing on Railway)
+// 8. Production-Ready Global Error Handling (Prevents Bot Crashing on Railway)
 bot.catch((err, ctx) => {
     console.error(`❌ Telegraf Runtime Error encountered for ${ctx.updateType}:`, err);
 });
@@ -96,7 +100,7 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('❌ CRITICAL UNHANDLED REJECTION AT:', promise, 'REASON:', reason);
 });
 
-// 8. Launch Bot (Railway/Production Polling Mode)
+// 9. Launch Bot (Railway/Production Polling Mode)
 bot.launch({
     allowedUpdates: ['message', 'callback_query'] // सिलेक्टेड अपडेट्स से परफॉरमेंस बेहतर होगी
 }).then(() => {
