@@ -1,17 +1,18 @@
 require("dotenv").config();
 
 const { Telegraf } = require("telegraf");
+const config = require("./config");
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const bot = new Telegraf(config.BOT_TOKEN);
 
 // Start Command
 bot.start((ctx) => {
   ctx.reply(
-    "🤖 Bot Successfully Started!\n\nWelcome to the Telegram File Bot.\n\nMore features will be added soon."
+    "🤖 Bot Successfully Started!\n\nWelcome to the Telegram File Bot.\n\nMore features coming soon..."
   );
 });
 
-// Test Command
+// Ping Command
 bot.command("ping", (ctx) => {
   ctx.reply("🏓 Pong! Bot is Online.");
 });
