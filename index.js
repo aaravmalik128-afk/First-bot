@@ -1,58 +1,110 @@
-require("dotenv").config();
+const { Telegraf, session } = require('telegraf');
+const config = require('./config');
+const connectDB = require('./database');
+const User = require('./userModel');
+const { forceJoinMiddleware, mainMenuKeyboard } = require('./middleware');
+const { setupAdminFeatures } = require('./admin');
+const { setupUserFeatures } = require('./userFeatures');
 
-const { Telegraf } = require("telegraf");
-const config = require("./config");
-const connectDB = require("./database");
-const User = require("./userModel");
+// 1. Initialize Bot
+const bot = new Telegraf(config.botToken);
 
-// Connect MongoDB
+// 2. Connect MongoDB Database
 connectDB();
 
-const bot = new Telegraf(config.BOT_TOKEN);
+// 3. Setup Middlewares & Sessions
+bot.use(session()); // सीन्स और स्टेट्स मैनेज करने के लिए
+bot.use(forceJoinMiddleware); // हर मैसेज पर फ़ोर्स जॉइन चेक करने के लिए
 
-// Start Command
+// 4. Register Users on /start Command
 bot.start(async (ctx) => {
-  try {
-    const user = ctx.from;
+    if (!ctx.from) return;
 
-    // Save user if not already in database
-    const exists = await User.findOne({ userId: user.id });
+    const telegramId = ctx.from.id;
+    const { username, first_name: firstName, last_name: lastName } = ctx.from;
 
-    if (!exists) {
-      await User.create({
-        userId: user.id,
-        firstName: user.first_name || "",
-        lastName: user.last_name || "",
-        username: user.username || ""
-      });
+    try {
+        // चेक करें कि यूजर पहले से डेटाबेस में है या नहीं
+        let user = await User.findOne({ telegramId });
+        
+        if (!user) {
+            // नया यूजर सेव करें
+            user = new User({
+                telegramId,
+                username,
+                firstName,
+                lastName
+            });
+            await user.save();
+            console.log(`👤 New User Registered: ${firstName} (${telegramId})`);
+        }
 
-      console.log("✅ New User Saved:", user.id);
+        const welcomeMessage = `👋 *Welcome to our File Sharing Bot, ${firstName}!*\n\n` +
+            `🚀 Here you can find all materials, PDFs, notes, courses, and software files instantly.\n\n` +
+            `👉 Use the menu buttons below to search or explore categories!`;
+
+        return ctx.replyWithMarkdown(welcomeMessage, mainMenuKeyboard);
+    } catch (error) {
+        console.error(`❌ Error in /start command: ${error.message}`);
+        return ctx.reply('👋 Welcome back! Click on any button below to get started.', mainMenuKeyboard);
     }
-
-    await ctx.reply(
-      `👋 Welcome ${user.first_name}!
-
-🤖 Study Matt Bot is now active.
-
-✅ Your account has been registered successfully.
-
-More features coming soon...`
-    );
-
-  } catch (err) {
-    console.log(err);
-    ctx.reply("❌ Something went wrong.");
-  }
 });
 
-// Ping Command
-bot.command("ping", (ctx) => {
-  ctx.reply("🏓 Pong! Bot is Online.");
+// 5. Handle Force Join Verification Callback Button
+bot.action('verify_join', async (ctx) => {
+    if (!ctx.from) return;
+    
+    const userId = ctx.from.id;
+    
+    try {
+        // दोबारा चैनल स्टेटस चेक करें
+        const member = await ctx.telegram.getChatMember(config.forceJoinChannel, userId);
+        const allowedStatuses = ['creator', 'administrator', 'member'];
+        
+        if (allowedStatuses.includes(member.status)) {
+            await ctx.answerCbQuery('✅ Verification Successful! Welcome.', { show_alert: false });
+            
+            // पुराना मैसेज डिलीट करके सीधे मेनू कीबोर्ड सेंड करना
+            await ctx.deleteMessage().catch(() => {});
+            return ctx.reply(`🎉 *Verification Success!*\n\nYou can now fully use the bot and access all files.`, {
+                parse_mode: 'Markdown',
+                ...mainMenuKeyboard
+            });
+        } else {
+            return ctx.answerCbQuery('⚠️ You still haven\'t joined! Please join the channel first.', { show_alert: true });
+        }
+    } catch (error) {
+        console.error(`❌ Verification Callback Error: ${error.message}`);
+        return ctx.answerCbQuery('❌ Verification failed. Try again later.', { show_alert: true });
+    }
 });
 
-bot.launch();
+// 6. Bind Admin & User Core Modules
+setupAdminFeatures(bot);
+setupUserFeatures(bot);
 
-console.log("🚀 Bot Started Successfully");
+// 7. Production-Ready Global Error Handling (Prevents Bot Crashing on Railway)
+bot.catch((err, ctx) => {
+    console.error(`❌ Telegraf Runtime Error encountered for ${ctx.updateType}:`, err);
+});
 
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+process.on('uncaughtException', (err) => {
+    console.error('❌ CRITICAL UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ CRITICAL UNHANDLED REJECTION AT:', promise, 'REASON:', reason);
+});
+
+// 8. Launch Bot (Railway/Production Polling Mode)
+bot.launch({
+    allowedUpdates: ['message', 'callback_query'] // सिलेक्टेड अपडेट्स से परफॉरमेंस बेहतर होगी
+}).then(() => {
+    console.log('🚀 Telegram File Sharing Bot is successfully running in Production mode!');
+}).catch((error) => {
+    console.error(`❌ Failed to launch bot: ${error.message}`);
+});
+
+// Graceful Shutdown Support
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
