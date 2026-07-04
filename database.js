@@ -3,12 +3,13 @@ const config = require("./config");
 
 async function connectDB() {
   try {
-    await mongoose.connect(config.MONGODB_URI);
+    await mongoose.connect(config.MONGODB_URI, {
+      dbName: "studymatt"
+    });
 
-    console.log("✅ MongoDB Connected Successfully");
+    console.log("✅ MongoDB Connected");
   } catch (error) {
-    console.log("❌ MongoDB Connection Failed");
-    console.error(error.message);
+    console.error("❌ MongoDB Error:", error.message);
     process.exit(1);
   }
 }
